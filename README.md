@@ -9,9 +9,9 @@ Full concept blueprint (rarity system, economy, matchmaking, monetization,
 growth features) lives outside this repo as a design document; ask the
 project owner for the current link.
 
-## Status: Phase 0 — Prototype
+## Status: Phase 0 done, Phase 1 in progress
 
-What's here right now, per the roadmap's first milestone:
+Phase 0 (prototype):
 
 - One drivable car, procedurally built from brick parts (`CarBuilder.lua`)
 - One placeholder loop track with four ordered checkpoints (`TrackBuilder.lua`)
@@ -19,8 +19,15 @@ What's here right now, per the roadmap's first milestone:
   only the server ever decides a lap counted (`GameInit.server.lua`)
 - A minimal HUD showing lap count, last lap, and best lap (`LapHud.client.lua`)
 
-Not here yet, by design: no economy, no upgrades, no rarity/gacha, no
-matchmaking. Those are later phases.
+Phase 1 (vertical slice), so far:
+
+- Cash economy foundation: 25 Cash per completed lap, awarded and tracked
+  server-side, persisted to DataStore per player (`PlayerProfile.lua`),
+  autosaved every 5 minutes and on leave, shown live in the HUD
+
+Still to come for Phase 1: a personal garage plot, three purchasable hand-built
+cars, a shop UI, and the first dedicated competitive track. No upgrades,
+rarity/gacha, or matchmaking yet — those are later phases.
 
 ## Project layout
 
@@ -35,6 +42,7 @@ src/
     Modules/
       CarBuilder.lua         -- builds a car Model from brick parts
       TrackBuilder.lua       -- builds the loop track + checkpoints
+      PlayerProfile.lua      -- DataStore-backed Cash persistence
   StarterPlayer/
     StarterPlayerScripts/
       LapHud.client.lua      -- lap timer HUD
@@ -62,8 +70,14 @@ in:
   blueprint — placeholder geometry, swap for real track art later.
 - No wrong-way detection — driving a checkpoint gap backwards isn't
   penalized yet.
+- `PlayerProfile.lua` has no cross-server session locking (see the comment
+  in that file) — fine for a single-server prototype, worth revisiting
+  before this runs on more than one server at once.
+- DataStore reads/writes will silently no-op to a fresh 0-Cash profile in
+  Studio unless *Enable Studio Access to API Services* is turned on under
+  Game Settings → Security.
 
-## Next up: Phase 1
+## Next up: rest of Phase 1
 
-Vertical slice — one personal garage plot, the first competitive track,
-three hand-built cars, and the Cash economy going live.
+A personal garage plot, three purchasable hand-built cars, a shop UI, and
+the first dedicated competitive track (separate from the free-practice loop).

@@ -13,14 +13,21 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local CarBuilder = require(script.Parent.Modules.CarBuilder)
 local TrackBuilder = require(script.Parent.Modules.TrackBuilder)
+local PlayerProfile = require(script.Parent.Modules.PlayerProfile)
 
 local MAX_FORWARD_SPEED = 90 -- studs/sec
 local MAX_REVERSE_SPEED = 30 -- studs/sec
 local MAX_TURN_RATE = 3 -- radians/sec, scaled by current speed
+local CASH_PER_LAP = 25
+local AUTOSAVE_INTERVAL_SECONDS = 300
 
 local lapUpdateEvent = Instance.new("RemoteEvent")
 lapUpdateEvent.Name = "LapUpdate"
 lapUpdateEvent.Parent = ReplicatedStorage
+
+local getInitialStateFunction = Instance.new("RemoteFunction")
+getInitialStateFunction.Name = "GetInitialState"
+getInitialStateFunction.Parent = ReplicatedStorage
 
 local trackModel, checkpoints, spawnCFrame = TrackBuilder.buildLoop()
 trackModel.Parent = workspace
@@ -55,6 +62,7 @@ local function spawnCarForPlayer(player)
 end
 
 Players.PlayerAdded:Connect(function(player)
+	PlayerProfile.load(player)
 	player.CharacterAdded:Connect(function()
 		task.wait(1) -- let the character finish loading before seating it
 		spawnCarForPlayer(player)
@@ -67,6 +75,26 @@ Players.PlayerRemoving:Connect(function(player)
 		data.car:Destroy()
 	end
 	playerData[player] = nil
+	PlayerProfile.release(player)
+end)
+
+getInitialStateFunction.OnServerInvoke = function(player)
+	local profile = PlayerProfile.get(player)
+	local data = playerData[player]
+	return {
+		cash = profile and profile.Cash or 0,
+		laps = data and data.lapsCompleted or 0,
+		bestLap = data and data.bestLap or nil,
+	}
+end
+
+task.spawn(function()
+	while true do
+		task.wait(AUTOSAVE_INTERVAL_SECONDS)
+		for _, player in ipairs(Players:GetPlayers()) do
+			PlayerProfile.save(player)
+		end
+	end
 end)
 
 local function findDriver(carModel)
@@ -104,11 +132,19 @@ local function handleCheckpointTouched(checkpoint, hit)
 		if not data.bestLap or lapTime < data.bestLap then
 			data.bestLap = lapTime
 		end
+
+		local profile = PlayerProfile.get(player)
+		if profile then
+			profile.Cash += CASH_PER_LAP
+		end
+
 		lapUpdateEvent:FireClient(player, {
 			type = "lap",
 			lapTime = lapTime,
 			bestLap = data.bestLap,
 			laps = data.lapsCompleted,
+			cashEarned = CASH_PER_LAP,
+			cash = profile and profile.Cash or nil,
 		})
 	else
 		lapUpdateEvent:FireClient(player, {
