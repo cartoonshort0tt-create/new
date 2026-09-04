@@ -71,6 +71,16 @@ oddsLabel.TextSize = 14
 oddsLabel.Text = "Loading odds..."
 oddsLabel.Parent = panel
 
+local pityLabel = Instance.new("TextLabel")
+pityLabel.Size = UDim2.new(1, 0, 0, 18)
+pityLabel.BackgroundTransparency = 1
+pityLabel.TextXAlignment = Enum.TextXAlignment.Left
+pityLabel.TextColor3 = Color3.fromRGB(160, 220, 190)
+pityLabel.Font = Enum.Font.Code
+pityLabel.TextSize = 13
+pityLabel.Text = ""
+pityLabel.Parent = panel
+
 local openButton = Instance.new("TextButton")
 openButton.Size = UDim2.new(1, 0, 0, 40)
 openButton.Font = Enum.Font.SourceSansBold
@@ -109,6 +119,10 @@ if infoOk and crateInfo then
 		table.insert(lines, string.format("%-10s %.1f%%", entry.tier, entry.chance * 100))
 	end
 	oddsLabel.Text = table.concat(lines, "\n")
+
+	if crateInfo.pityEpicThreshold then
+		pityLabel.Text = string.format("Pity: guaranteed Epic+ within %d pulls", crateInfo.pityEpicThreshold)
+	end
 end
 
 lapUpdateEvent.OnClientEvent:Connect(function(data)
@@ -117,6 +131,9 @@ lapUpdateEvent.OnClientEvent:Connect(function(data)
 			resultLabel.Text = string.format("%s pull -- got %s!", data.tier, data.carName or "a new car")
 		elseif data.reward == "duplicate_cash" then
 			resultLabel.Text = string.format("%s pull -- already owned, +%d Cash", data.tier, data.amount or 0)
+		elseif data.reward == "garage_full_cash" then
+			resultLabel.Text =
+				string.format("%s pull -- garage full, +%d Cash instead", data.tier, data.amount or 0)
 		else
 			resultLabel.Text = string.format("Common pull -- +%d Cash", data.amount or 0)
 		end

@@ -1,7 +1,8 @@
--- Race queue panel: one button to join/leave the competitive-track queue,
--- and status text for queue position, race start, and finish placement.
--- The server decides everything here -- when a heat starts, who's in it,
--- and the payout; this UI only reflects what it's told.
+-- Race queue panel: one join/leave button per competitive track (Speed
+-- Oval, Technical Circuit, Stunt Yard), plus shared status text for queue
+-- position, race start, and finish placement. A player can only wait in
+-- one track's queue at a time -- the server enforces that and this UI just
+-- reflects whichever "queueJoined" event it's told about.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,25 +11,38 @@ local localPlayer = Players.LocalPlayer
 local lapUpdateEvent = ReplicatedStorage:WaitForChild("LapUpdate")
 local queueForRaceEvent = ReplicatedStorage:WaitForChild("QueueForRace")
 
+local TRACKS = {
+	{ id = "speed_oval", label = "SPEED OVAL" },
+	{ id = "technical_circuit", label = "TECHNICAL CIRCUIT" },
+	{ id = "stunt_yard", label = "STUNT YARD" },
+}
+
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "QueueUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 
-local queueButton = Instance.new("TextButton")
-queueButton.Name = "QueueButton"
-queueButton.Size = UDim2.new(0, 220, 0, 44)
-queueButton.Position = UDim2.new(0, 20, 0, 500)
-queueButton.BackgroundColor3 = Color3.fromRGB(20, 90, 160)
-queueButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-queueButton.Font = Enum.Font.SourceSansBold
-queueButton.TextSize = 18
-queueButton.Text = "QUEUE FOR SPEED OVAL"
-queueButton.Parent = screenGui
+local panel = Instance.new("Frame")
+panel.Name = "QueuePanel"
+panel.Size = UDim2.new(0, 260, 0, 190)
+panel.Position = UDim2.new(0, 20, 0, 500)
+panel.BackgroundColor3 = Color3.fromRGB(14, 24, 44)
+panel.BackgroundTransparency = 0.15
+panel.Parent = screenGui
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 8)
+padding.PaddingLeft = UDim.new(0, 8)
+padding.PaddingRight = UDim.new(0, 8)
+padding.Parent = panel
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 6)
+listLayout.Parent = panel
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(0, 300, 0, 60)
-statusLabel.Position = UDim2.new(0, 20, 0, 550)
+statusLabel.Position = UDim2.new(0, 20, 0, 700)
 statusLabel.BackgroundColor3 = Color3.fromRGB(14, 24, 44)
 statusLabel.BackgroundTransparency = 0.15
 statusLabel.TextColor3 = Color3.fromRGB(238, 243, 255)
@@ -37,36 +51,71 @@ statusLabel.TextSize = 15
 statusLabel.TextWrapped = true
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.TextYAlignment = Enum.TextYAlignment.Top
-statusLabel.Text = ""
+statusLabel.Text = "Not queued."
 statusLabel.Parent = screenGui
 
-local inQueue = false
+local buttons = {} -- trackId -> TextButton
+local queuedTrackId = nil
 
-local function setQueued(queued)
-	inQueue = queued
-	queueButton.Text = queued and "LEAVE QUEUE" or "QUEUE FOR SPEED OVAL"
-	queueButton.BackgroundColor3 = queued and Color3.fromRGB(160, 50, 40) or Color3.fromRGB(20, 90, 160)
+local function refreshButtons()
+	for trackId, button in pairs(buttons) do
+		if trackId == queuedTrackId then
+			button.Text = "LEAVE QUEUE"
+			button.BackgroundColor3 = Color3.fromRGB(160, 50, 40)
+		else
+			local def
+			for _, t in ipairs(TRACKS) do
+				if t.id == trackId then
+					def = t
+				end
+			end
+			button.Text = "QUEUE: " .. (def and def.label or trackId)
+			button.BackgroundColor3 = Color3.fromRGB(20, 90, 160)
+		end
+	end
 end
 
-queueButton.MouseButton1Click:Connect(function()
-	queueForRaceEvent:FireServer()
-end)
+for _, def in ipairs(TRACKS) do
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(1, 0, 0, 44)
+	button.Font = Enum.Font.SourceSansBold
+	button.TextSize = 16
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.BackgroundColor3 = Color3.fromRGB(20, 90, 160)
+	button.Text = "QUEUE: " .. def.label
+	button.Parent = panel
+
+	button.MouseButton1Click:Connect(function()
+		queueForRaceEvent:FireServer(def.id)
+	end)
+
+	buttons[def.id] = button
+end
 
 lapUpdateEvent.OnClientEvent:Connect(function(data)
 	if data.type == "queueJoined" then
-		setQueued(true)
-		statusLabel.Text = string.format("In queue (position %d). A heat starts at 6 players\nor after a short wait with 2+.", data.position)
+		queuedTrackId = data.trackId
+		refreshButtons()
+		statusLabel.Text = string.format(
+			"In queue for %s (position %d).\nA heat starts at 6, or after a short wait with 2+.",
+			data.trackId,
+			data.position
+		)
 	elseif data.type == "queueLeft" then
-		setQueued(false)
+		if queuedTrackId == data.trackId then
+			queuedTrackId = nil
+		end
+		refreshButtons()
 		statusLabel.Text = "Left the queue."
 	elseif data.type == "raceStart" then
-		setQueued(false)
-		statusLabel.Text = string.format("Race started! %d racers on Speed Oval -- go!", data.racerCount)
+		queuedTrackId = nil
+		refreshButtons()
+		statusLabel.Text = string.format("Race started on %s! %d racers -- go!", data.trackId, data.racerCount)
 	elseif data.type == "raceFinish" then
 		if data.dnf then
 			statusLabel.Text = string.format("Race timed out before you finished. +%d Cash consolation.", data.reward)
 		else
-			statusLabel.Text = string.format("Finished #%d! +%d Cash.", data.rank, data.reward)
+			statusLabel.Text = string.format("Finished #%d on %s! +%d Cash.", data.rank, data.trackId, data.reward)
 		end
 	end
 end)

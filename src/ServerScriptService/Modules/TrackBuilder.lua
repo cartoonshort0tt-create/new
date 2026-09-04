@@ -8,8 +8,8 @@ local TrackBuilder = {}
 
 local ROAD_WIDTH = 16
 local ROAD_COLOR = Color3.fromRGB(90, 92, 100)
-local HALF_SPAN_X = 40 -- distance from center to the left/right straights
-local HALF_LENGTH_Z = 60 -- distance from center to the front/back straights
+local DEFAULT_HALF_SPAN_X = 40 -- distance from center to the left/right straights
+local DEFAULT_HALF_LENGTH_Z = 60 -- distance from center to the front/back straights
 
 local function addRoadPart(parent, cframe, size)
 	local part = Instance.new("Part")
@@ -43,9 +43,13 @@ local function addCheckpoint(parent, cframe, size, order)
 	return checkpoint
 end
 
--- Returns (trackModel, orderedCheckpoints, spawnCFrame)
-function TrackBuilder.buildLoop(center)
+-- Returns (trackModel, orderedCheckpoints, spawnCFrame).
+-- halfSpanX/halfLengthZ let callers vary footprint per track archetype;
+-- both default to the original prototype loop's size.
+function TrackBuilder.buildLoop(center, halfSpanX, halfLengthZ)
 	center = center or Vector3.new(0, 0, 0)
+	halfSpanX = halfSpanX or DEFAULT_HALF_SPAN_X
+	halfLengthZ = halfLengthZ or DEFAULT_HALF_LENGTH_Z
 
 	local model = Instance.new("Model")
 	model.Name = "PrototypeCircuit"
@@ -54,55 +58,55 @@ function TrackBuilder.buildLoop(center)
 	-- Sized to overlap at the corners so there are no visible gaps.
 	addRoadPart(
 		model,
-		CFrame.new(center + Vector3.new(-HALF_SPAN_X, 0.5, 0)),
-		Vector3.new(ROAD_WIDTH, 1, HALF_LENGTH_Z * 2 + ROAD_WIDTH)
+		CFrame.new(center + Vector3.new(-halfSpanX, 0.5, 0)),
+		Vector3.new(ROAD_WIDTH, 1, halfLengthZ * 2 + ROAD_WIDTH)
 	)
 	addRoadPart(
 		model,
-		CFrame.new(center + Vector3.new(HALF_SPAN_X, 0.5, 0)),
-		Vector3.new(ROAD_WIDTH, 1, HALF_LENGTH_Z * 2 + ROAD_WIDTH)
+		CFrame.new(center + Vector3.new(halfSpanX, 0.5, 0)),
+		Vector3.new(ROAD_WIDTH, 1, halfLengthZ * 2 + ROAD_WIDTH)
 	)
 	addRoadPart(
 		model,
-		CFrame.new(center + Vector3.new(0, 0.5, HALF_LENGTH_Z)),
-		Vector3.new(HALF_SPAN_X * 2 + ROAD_WIDTH, 1, ROAD_WIDTH)
+		CFrame.new(center + Vector3.new(0, 0.5, halfLengthZ)),
+		Vector3.new(halfSpanX * 2 + ROAD_WIDTH, 1, ROAD_WIDTH)
 	)
 	addRoadPart(
 		model,
-		CFrame.new(center + Vector3.new(0, 0.5, -HALF_LENGTH_Z)),
-		Vector3.new(HALF_SPAN_X * 2 + ROAD_WIDTH, 1, ROAD_WIDTH)
+		CFrame.new(center + Vector3.new(0, 0.5, -halfLengthZ)),
+		Vector3.new(halfSpanX * 2 + ROAD_WIDTH, 1, ROAD_WIDTH)
 	)
 
 	-- Checkpoints in travel order: front -> right -> back -> left -> (wrap to front = lap).
 	local checkpoints = {
 		addCheckpoint(
 			model,
-			CFrame.new(center + Vector3.new(0, 4, HALF_LENGTH_Z)),
+			CFrame.new(center + Vector3.new(0, 4, halfLengthZ)),
 			Vector3.new(2, 8, ROAD_WIDTH),
 			1
 		),
 		addCheckpoint(
 			model,
-			CFrame.new(center + Vector3.new(HALF_SPAN_X, 4, 0)),
+			CFrame.new(center + Vector3.new(halfSpanX, 4, 0)),
 			Vector3.new(ROAD_WIDTH, 8, 2),
 			2
 		),
 		addCheckpoint(
 			model,
-			CFrame.new(center + Vector3.new(0, 4, -HALF_LENGTH_Z)),
+			CFrame.new(center + Vector3.new(0, 4, -halfLengthZ)),
 			Vector3.new(2, 8, ROAD_WIDTH),
 			3
 		),
 		addCheckpoint(
 			model,
-			CFrame.new(center + Vector3.new(-HALF_SPAN_X, 4, 0)),
+			CFrame.new(center + Vector3.new(-halfSpanX, 4, 0)),
 			Vector3.new(ROAD_WIDTH, 8, 2),
 			4
 		),
 	}
 
 	-- Spawn on the front straight, left of center, facing toward checkpoint 1.
-	local spawnPosition = center + Vector3.new(-HALF_SPAN_X + 10, 3, HALF_LENGTH_Z)
+	local spawnPosition = center + Vector3.new(-halfSpanX + 10, 3, halfLengthZ)
 	local spawnCFrame = CFrame.new(spawnPosition, spawnPosition + Vector3.new(1, 0, 0))
 
 	return model, checkpoints, spawnCFrame

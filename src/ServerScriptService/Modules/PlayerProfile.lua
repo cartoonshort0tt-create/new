@@ -32,6 +32,7 @@ local function freshProfile()
 		Crystals = 0,
 		OwnedCars = ownedCars,
 		ActiveCarId = CarCatalog.STARTER_CAR_ID,
+		GarageSlots = 4,
 		Upgrades = upgrades,
 		PityPulls = 0,
 		PitySinceEpicPlus = 0,
@@ -57,6 +58,7 @@ local function hydrate(saved)
 	profile.Cash = saved.Cash or profile.Cash
 	profile.Crystals = saved.Crystals or profile.Crystals
 	profile.ActiveCarId = saved.ActiveCarId or profile.ActiveCarId
+	profile.GarageSlots = saved.GarageSlots or profile.GarageSlots
 	profile.PityPulls = saved.PityPulls or profile.PityPulls
 	profile.PitySinceEpicPlus = saved.PitySinceEpicPlus or profile.PitySinceEpicPlus
 	profile.BlueprintShards = saved.BlueprintShards or profile.BlueprintShards

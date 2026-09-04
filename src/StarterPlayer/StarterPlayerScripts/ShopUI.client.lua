@@ -11,6 +11,7 @@ local getInitialStateFunction = ReplicatedStorage:WaitForChild("GetInitialState"
 local getCarCatalogFunction = ReplicatedStorage:WaitForChild("GetCarCatalog")
 local purchaseCarEvent = ReplicatedStorage:WaitForChild("PurchaseCar")
 local selectCarEvent = ReplicatedStorage:WaitForChild("SelectCar")
+local purchaseGarageSlotEvent = ReplicatedStorage:WaitForChild("PurchaseGarageSlot")
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ShopUI"
@@ -30,7 +31,7 @@ toggleButton.Parent = screenGui
 
 local panel = Instance.new("Frame")
 panel.Name = "GaragePanel"
-panel.Size = UDim2.new(0, 360, 0, 320)
+panel.Size = UDim2.new(0, 360, 0, 380)
 panel.Position = UDim2.new(0, 20, 0, 200)
 panel.BackgroundColor3 = Color3.fromRGB(14, 24, 44)
 panel.BackgroundTransparency = 0.05
@@ -51,9 +52,48 @@ toggleButton.MouseButton1Click:Connect(function()
 	panel.Visible = not panel.Visible
 end)
 
+local slotsLabel = Instance.new("TextLabel")
+slotsLabel.Size = UDim2.new(1, 0, 0, 24)
+slotsLabel.BackgroundTransparency = 1
+slotsLabel.TextXAlignment = Enum.TextXAlignment.Left
+slotsLabel.TextColor3 = Color3.fromRGB(200, 210, 230)
+slotsLabel.Font = Enum.Font.Code
+slotsLabel.TextSize = 14
+slotsLabel.Text = "Garage: --/--"
+slotsLabel.Parent = panel
+
+local buySlotButton = Instance.new("TextButton")
+buySlotButton.Size = UDim2.new(1, 0, 0, 36)
+buySlotButton.Font = Enum.Font.SourceSansBold
+buySlotButton.TextSize = 15
+buySlotButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+buySlotButton.BackgroundColor3 = Color3.fromRGB(20, 110, 60)
+buySlotButton.Text = "+1 GARAGE SLOT"
+buySlotButton.Parent = panel
+
+buySlotButton.MouseButton1Click:Connect(function()
+	purchaseGarageSlotEvent:FireServer()
+end)
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, 0, 0, 20)
+statusLabel.BackgroundTransparency = 1
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.TextColor3 = Color3.fromRGB(255, 170, 120)
+statusLabel.Font = Enum.Font.Code
+statusLabel.TextSize = 13
+statusLabel.Text = ""
+statusLabel.Parent = panel
+
 local ownedCars = {}
 local activeCarId = nil
+local garageSlots = 0
+local ownedCarCount = 0
 local rows = {} -- carId -> { actionButton, price }
+
+local function refreshSlotsLabel()
+	slotsLabel.Text = string.format("Garage: %d/%d cars", ownedCarCount, garageSlots)
+end
 
 local function refreshRowStates()
 	for carId, row in pairs(rows) do
@@ -131,15 +171,34 @@ end)
 if stateOk and initialState then
 	ownedCars = initialState.ownedCars or {}
 	activeCarId = initialState.activeCarId
+	garageSlots = initialState.garageSlots or 0
+	ownedCarCount = initialState.ownedCarCount or 0
 	refreshRowStates()
+	refreshSlotsLabel()
 end
 
 lapUpdateEvent.OnClientEvent:Connect(function(data)
 	if data.type == "purchaseSuccess" then
 		ownedCars[data.carId] = true
+		ownedCarCount += 1
 		refreshRowStates()
+		refreshSlotsLabel()
 	elseif data.type == "carSelected" then
 		activeCarId = data.carId
 		refreshRowStates()
+	elseif data.type == "garageSlotPurchased" then
+		garageSlots = data.garageSlots
+		statusLabel.Text = ""
+		refreshSlotsLabel()
+	elseif data.type == "garageSlotFailed" then
+		statusLabel.Text = "Not enough Cash for another slot."
+	elseif data.type == "purchaseFailed" then
+		statusLabel.Text = (data.reason == "garage_full") and "Garage full -- buy a slot first."
+			or "Not enough Cash for that car."
+	elseif data.type == "crateResult" and data.reward == "car" then
+		ownedCars[data.carId] = true
+		ownedCarCount += 1
+		refreshRowStates()
+		refreshSlotsLabel()
 	end
 end)
