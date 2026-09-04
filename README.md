@@ -78,6 +78,11 @@ src/
       UpgradeUI.client.lua   -- upgrade tree panel
       CrateUI.client.lua     -- Blueprint Crate panel (odds + pity)
       QueueUI.client.lua     -- per-track race queue + results panel
+tests/
+  (see tests/README.md)      -- a Lua-level simulation of the server logic,
+                                 since there's no Studio available here to
+                                 actually playtest in -- run with
+                                 `./tests/run_tests.sh`
 ```
 
 ## Running it in Studio
@@ -88,6 +93,25 @@ src/
 3. In Roblox Studio, open the Rojo plugin panel and click **Connect**.
 4. Press **Play** (or **Play Here**, with a few local test players, to
    exercise matchmaking) to test.
+
+## Testing without Studio
+
+There's no Roblox Studio available in the environment this was built in, so
+`tests/` is a Lua-level simulation instead: a hand-built mock of the Roblox
+API (`tests/mock_roblox.lua`) that actually loads and executes the real
+files in `src/` -- not a reimplementation -- and drives them through
+simulated multiplayer scenarios (joining, driving laps, buying cars,
+upgrading, pulling crates, queuing into matchmaking heats) with real
+assertions on the results. It already caught and fixed one real bug
+(`PurchaseCar` accepting a crate-exclusive car ID). Run it with:
+
+```
+./tests/run_tests.sh
+```
+
+See `tests/README.md` for exactly what this does and doesn't prove -- in
+short, the logic is verified; a real Studio playtest is still needed to
+confirm it plays well (steering feel, tuning, UI layout).
 
 ## Known simplifications
 

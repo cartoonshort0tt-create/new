@@ -614,7 +614,7 @@ end
 purchaseCarEvent.OnServerEvent:Connect(function(player, carId)
 	local entry = type(carId) == "string" and CarCatalog.get(carId)
 	local profile = PlayerProfile.get(player)
-	if not entry or not profile then
+	if not entry or not profile or entry.source ~= "shop" then
 		return
 	end
 	if profile.OwnedCars[carId] then
