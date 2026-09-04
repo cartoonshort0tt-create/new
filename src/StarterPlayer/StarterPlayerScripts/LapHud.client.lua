@@ -1,6 +1,6 @@
--- Minimal HUD for Phase 0/1: shows lap count, last lap time, best lap time,
--- and Cash balance. Driven entirely by the server -- the client never
--- computes or claims a lap time or a Cash amount itself.
+-- Minimal HUD: Cash, Crystals, lap count, last lap, best lap. Driven
+-- entirely by the server -- the client never computes or claims a lap
+-- time or a currency amount itself.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -23,7 +23,7 @@ screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 
 local label = Instance.new("TextLabel")
 label.Name = "LapLabel"
-label.Size = UDim2.new(0, 320, 0, 118)
+label.Size = UDim2.new(0, 320, 0, 140)
 label.Position = UDim2.new(0, 20, 0, 20)
 label.BackgroundColor3 = Color3.fromRGB(14, 24, 44)
 label.BackgroundTransparency = 0.15
@@ -33,18 +33,20 @@ label.Font = Enum.Font.Code
 label.TextSize = 20
 label.TextXAlignment = Enum.TextXAlignment.Left
 label.TextYAlignment = Enum.TextYAlignment.Top
-label.Text = "CASH --\nLAP 0\nLAST --\nBEST --"
+label.Text = "CASH --\nCRYSTALS --\nLAP 0\nLAST --\nBEST --"
 label.Parent = screenGui
 
 local cash = 0
+local crystals = 0
 local lapsCompleted = 0
 local lastLap = nil
 local bestLap = nil
 
 local function refresh()
 	label.Text = string.format(
-		"CASH %d\nLAP %d\nLAST %s\nBEST %s",
+		"CASH %d\nCRYSTALS %d\nLAP %d\nLAST %s\nBEST %s",
 		cash,
+		crystals,
 		lapsCompleted,
 		formatSeconds(lastLap),
 		formatSeconds(bestLap)
@@ -56,6 +58,7 @@ local ok, initialState = pcall(function()
 end)
 if ok and initialState then
 	cash = initialState.cash or 0
+	crystals = initialState.crystals or 0
 	lapsCompleted = initialState.laps or 0
 	bestLap = initialState.bestLap
 	refresh()
@@ -68,6 +71,18 @@ lapUpdateEvent.OnClientEvent:Connect(function(data)
 		bestLap = data.bestLap
 		if data.cash then
 			cash = data.cash
+		end
+		if data.crystals then
+			crystals = data.crystals
+		end
+		refresh()
+	elseif data.cash or data.crystals then
+		-- purchaseSuccess / upgradeSuccess / crateResult all carry updated balances
+		if data.cash then
+			cash = data.cash
+		end
+		if data.crystals then
+			crystals = data.crystals
 		end
 		refresh()
 	end

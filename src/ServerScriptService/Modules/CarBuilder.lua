@@ -1,10 +1,10 @@
--- Builds a placeholder brick-built car: a chassis, a glass cabin, four wheels,
--- decorative studs on the roof (the brick-theme signature), and a VehicleSeat.
--- Phase 0 scope: one fixed "Common" look. Rarity-driven visuals come in a later phase.
+-- Builds a brick-built car from a CarCatalog entry: a chassis, a glass
+-- cabin, four wheels, decorative roof studs (the brick-theme signature),
+-- and a VehicleSeat. Speed/turn multipliers are stored as attributes on
+-- the model so the drive loop can read them without needing the catalog.
 
 local CarBuilder = {}
 
-local CHASSIS_COLOR = Color3.fromRGB(200, 45, 45)
 local WHEEL_COLOR = Color3.fromRGB(25, 25, 25)
 local CABIN_COLOR = Color3.fromRGB(225, 232, 245)
 
@@ -15,14 +15,20 @@ local function weld(part0, part1)
 	weldConstraint.Parent = part1
 end
 
-function CarBuilder.new(name, primaryColor)
+-- catalogEntry: { name, color, speedMultiplier, turnMultiplier, ... }
+function CarBuilder.new(name, catalogEntry)
+	catalogEntry = catalogEntry or {}
+	local bodyColor = catalogEntry.color or Color3.fromRGB(200, 45, 45)
+
 	local model = Instance.new("Model")
 	model.Name = name or "BrikCar"
+	model:SetAttribute("SpeedMultiplier", catalogEntry.speedMultiplier or 1.0)
+	model:SetAttribute("TurnMultiplier", catalogEntry.turnMultiplier or 1.0)
 
 	local chassis = Instance.new("Part")
 	chassis.Name = "Chassis"
 	chassis.Size = Vector3.new(4, 1, 8)
-	chassis.Color = primaryColor or CHASSIS_COLOR
+	chassis.Color = bodyColor
 	chassis.Material = Enum.Material.SmoothPlastic
 	chassis.TopSurface = Enum.SurfaceType.Smooth
 	chassis.BottomSurface = Enum.SurfaceType.Smooth
@@ -46,7 +52,7 @@ function CarBuilder.new(name, primaryColor)
 			stud.Shape = Enum.PartType.Cylinder
 			stud.Size = Vector3.new(0.4, 0.6, 0.6)
 			stud.CFrame = chassis.CFrame * CFrame.new(i * 1.3, 0.7, j) * CFrame.Angles(0, 0, math.rad(90))
-			stud.Color = chassis.Color
+			stud.Color = bodyColor
 			stud.Material = chassis.Material
 			stud.CanCollide = false
 			stud.Parent = model
