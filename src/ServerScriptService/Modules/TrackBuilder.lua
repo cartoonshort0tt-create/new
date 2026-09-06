@@ -56,13 +56,23 @@ local function addCenterline(parent, segmentCenter, length, lengthAxis, lineColo
 	line.Parent = parent
 end
 
--- Barrier walls flanking a straight segment so a car can't drive off the
--- track. widthAxis is the axis the road's ROAD_WIDTH runs along ("x" for
--- the left/right straights, "z" for the front/back straights); length is
--- the segment's length along the other axis.
-local function addWalls(parent, segmentCenter, length, widthAxis, wallColor)
-	local offset = ROAD_WIDTH / 2 + WALL_THICKNESS / 2
+-- Barrier walls: two independent, concentric rectangular perimeters (an
+-- outer one at the road's outer edge, an inner one at the road's inner
+-- edge/island), each built the same corner-overlap way the road itself
+-- is (every side's length includes +WALL_THICKNESS so adjacent sides
+-- overlap slightly at the corner instead of leaving a gap).
+--
+-- This -- rather than building each straight's walls independently sized
+-- to that straight's own full length -- matters: sizing per-straight
+-- walls to the straight's full length (including its corner overlap
+-- zone) means both intersecting straights' walls extend into the same
+-- corner square from different directions, sealing it into a closed box
+-- instead of a driveable turn. Two separate concentric rectangles never
+-- have that problem, because the open corridor between them is the same
+-- 16-stud lane all the way around, with nothing crossing it.
+local function addWallRectangle(parent, center, halfX, halfZ, wallColor)
 	local wallY = 1 + WALL_HEIGHT / 2 -- sits on top of the 1-stud-thick road
+	local overlap = WALL_THICKNESS
 
 	local function addWall(position, size)
 		local wall = Instance.new("Part")
@@ -76,15 +86,13 @@ local function addWalls(parent, segmentCenter, length, widthAxis, wallColor)
 		wall.Parent = parent
 	end
 
-	if widthAxis == "x" then
-		local size = Vector3.new(WALL_THICKNESS, WALL_HEIGHT, length)
-		addWall(segmentCenter + Vector3.new(offset, wallY, 0), size)
-		addWall(segmentCenter + Vector3.new(-offset, wallY, 0), size)
-	else
-		local size = Vector3.new(length, WALL_HEIGHT, WALL_THICKNESS)
-		addWall(segmentCenter + Vector3.new(0, wallY, offset), size)
-		addWall(segmentCenter + Vector3.new(0, wallY, -offset), size)
-	end
+	local sideLengthX = halfX * 2 + overlap
+	local sideLengthZ = halfZ * 2 + overlap
+
+	addWall(center + Vector3.new(-halfX, wallY, 0), Vector3.new(WALL_THICKNESS, WALL_HEIGHT, sideLengthZ))
+	addWall(center + Vector3.new(halfX, wallY, 0), Vector3.new(WALL_THICKNESS, WALL_HEIGHT, sideLengthZ))
+	addWall(center + Vector3.new(0, wallY, halfZ), Vector3.new(sideLengthX, WALL_HEIGHT, WALL_THICKNESS))
+	addWall(center + Vector3.new(0, wallY, -halfZ), Vector3.new(sideLengthX, WALL_HEIGHT, WALL_THICKNESS))
 end
 
 local function addCheckpoint(parent, cframe, size, order)
@@ -132,10 +140,8 @@ function TrackBuilder.buildLoop(center, halfSpanX, halfLengthZ, theme)
 	addRoadPart(model, CFrame.new(frontCenter), Vector3.new(crossLength, 1, ROAD_WIDTH), theme.roadColor)
 	addRoadPart(model, CFrame.new(backCenter), Vector3.new(crossLength, 1, ROAD_WIDTH), theme.roadColor)
 
-	addWalls(model, leftCenter, straightLength, "x", theme.wallColor)
-	addWalls(model, rightCenter, straightLength, "x", theme.wallColor)
-	addWalls(model, frontCenter, crossLength, "z", theme.wallColor)
-	addWalls(model, backCenter, crossLength, "z", theme.wallColor)
+	addWallRectangle(model, center, halfSpanX + ROAD_WIDTH / 2, halfLengthZ + ROAD_WIDTH / 2, theme.wallColor)
+	addWallRectangle(model, center, halfSpanX - ROAD_WIDTH / 2, halfLengthZ - ROAD_WIDTH / 2, theme.wallColor)
 
 	addCenterline(model, leftCenter, straightLength, "z", theme.lineColor)
 	addCenterline(model, rightCenter, straightLength, "z", theme.lineColor)

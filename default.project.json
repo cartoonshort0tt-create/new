@@ -5,6 +5,12 @@
     "ServerScriptService": {
       "$path": "src/ServerScriptService"
     },
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Modules": {
+        "$path": "src/ReplicatedStorage/Modules"
+      }
+    },
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "StarterPlayerScripts": {

@@ -237,6 +237,21 @@ local function applyEffectiveStats(player)
 	data.car:SetAttribute("TurnMultiplier", catalogEntry.turnMultiplier * (1 + bonus))
 end
 
+-- Seats the player in their own car's DriveSeat, wherever that car
+-- currently is. Roblox physically moves a humanoid to its seat on Sit(),
+-- so this is also how a teleport actually moves the PLAYER, not just the
+-- car -- a player who got out of their car to walk around (always
+-- possible with a VehicleSeat) needs this called again after every
+-- teleport, or the car moves without them.
+local function seatPlayerInCar(player, car)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local seat = car and car:FindFirstChild("DriveSeat")
+	if humanoid and seat then
+		seat:Sit(humanoid)
+	end
+end
+
 local function spawnCarForPlayer(player)
 	local data = playerData[player]
 	if not data then
@@ -256,12 +271,10 @@ local function spawnCarForPlayer(player)
 	data.car = car
 	applyEffectiveStats(player)
 
-	local character = player.Character or player.CharacterAdded:Wait()
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local seat = car:FindFirstChild("DriveSeat")
-	if humanoid and seat then
-		seat:Sit(humanoid)
+	if not player.Character then
+		player.CharacterAdded:Wait()
 	end
+	seatPlayerInCar(player, car)
 end
 
 Players.PlayerAdded:Connect(function(player)
@@ -627,6 +640,7 @@ local function handlePadTouched(destinationTrackId, hit)
 		data.car:PivotTo(competitiveSpawns[destinationTrackId])
 		data.car.PrimaryPart.AssemblyLinearVelocity = Vector3.new()
 		data.car.PrimaryPart.AssemblyAngularVelocity = Vector3.new()
+		seatPlayerInCar(player, data.car) -- in case they'd gotten out to walk around
 	end
 
 	local previous = data.trackProgress[destinationTrackId]
@@ -653,6 +667,7 @@ returnToShowroomEvent.OnServerEvent:Connect(function(player)
 	data.car:PivotTo(showroomSpawnCFrame)
 	data.car.PrimaryPart.AssemblyLinearVelocity = Vector3.new()
 	data.car.PrimaryPart.AssemblyAngularVelocity = Vector3.new()
+	seatPlayerInCar(player, data.car) -- in case they'd gotten out to walk around
 end)
 
 -- ===== Shop =====

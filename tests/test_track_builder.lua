@@ -83,6 +83,47 @@ for _, child in ipairs(model:GetChildren()) do
 end
 T.assertEqual(wallCount, 8, "8 walls (2 flanking each of the 4 road segments)")
 
+-- The exact bug found in the first Studio playtest: walls sized to each
+-- straight's own full length (including its corner overlap zone) seal
+-- every corner into a closed box instead of a driveable turn. Lock this
+-- in structurally: every wall must sit at one of exactly two distances
+-- from center (the outer ring or the inner ring), never some in-between
+-- value that would only make sense if a wall were cutting across the
+-- corridor near a corner.
+local wallHalfSpanX, wallHalfLengthZ = 30, 40 -- matches the smallModel built below
+local outerX, innerX = wallHalfSpanX + 8, wallHalfSpanX - 8
+local outerZ, innerZ = wallHalfLengthZ + 8, wallHalfLengthZ - 8
+local smallModelForWalls = TrackBuilder.buildLoop(mock.Vector3.new(0, 0, 0), wallHalfSpanX, wallHalfLengthZ)
+for _, child in ipairs(smallModelForWalls:GetChildren()) do
+	if child.Name == "Wall" then
+		if child.Size.Z > child.Size.X then
+			-- a left/right-style wall: its offset from center is |X|, and
+			-- its length (Size.Z) must match a length appropriate to
+			-- WHICHEVER ring it's on -- an inner-ring wall sized to the
+			-- outer ring's length (or to the single shared length the old
+			-- per-straight code used) is exactly the bug that boxed in
+			-- every corner.
+			local distance = math.abs(child.CFrame.X)
+			if math.abs(distance - outerX) < 0.01 then
+				T.assertNear(child.Size.Z, outerZ * 2 + 1, 0.01, "outer X-wall length matches the outer ring")
+			elseif math.abs(distance - innerX) < 0.01 then
+				T.assertNear(child.Size.Z, innerZ * 2 + 1, 0.01, "inner X-wall length matches the inner ring (shorter, not boxing the corner)")
+			else
+				T.assertTrue(false, "X-wall sits on the outer or inner ring, not a boxing position")
+			end
+		else
+			local distance = math.abs(child.CFrame.Z)
+			if math.abs(distance - outerZ) < 0.01 then
+				T.assertNear(child.Size.X, outerX * 2 + 1, 0.01, "outer Z-wall length matches the outer ring")
+			elseif math.abs(distance - innerZ) < 0.01 then
+				T.assertNear(child.Size.X, innerX * 2 + 1, 0.01, "inner Z-wall length matches the inner ring (shorter, not boxing the corner)")
+			else
+				T.assertTrue(false, "Z-wall sits on the outer or inner ring, not a boxing position")
+			end
+		end
+	end
+end
+
 -- Custom theme colors actually get applied, not silently ignored.
 local themedModel = TrackBuilder.buildLoop(mock.Vector3.new(500, 0, 0), nil, nil, {
 	roadColor = mock.Color3.fromRGB(1, 2, 3),

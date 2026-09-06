@@ -11,6 +11,7 @@ local localPlayer = Players.LocalPlayer
 local lapUpdateEvent = ReplicatedStorage:WaitForChild("LapUpdate")
 local getInitialStateFunction = ReplicatedStorage:WaitForChild("GetInitialState")
 local purchaseUpgradeEvent = ReplicatedStorage:WaitForChild("PurchaseUpgrade")
+local PanelCoordinator = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("PanelCoordinator"))
 
 local BRANCHES = { "Engine", "Tires", "Nitro", "Handling", "Chassis" }
 local MAX_LEVEL = 8
@@ -57,10 +58,28 @@ padding.Parent = panel
 
 local listLayout = Instance.new("UIListLayout")
 listLayout.Padding = UDim.new(0, 8)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 listLayout.Parent = panel
 
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseButton"
+closeButton.LayoutOrder = -1
+closeButton.Size = UDim2.new(1, 0, 0, 28)
+closeButton.Font = Enum.Font.SourceSansBold
+closeButton.TextSize = 15
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
+closeButton.Text = "CLOSE"
+closeButton.Parent = panel
+
+closeButton.MouseButton1Click:Connect(function()
+	panel.Visible = false
+end)
+
+PanelCoordinator.register("upgrades", panel)
+
 toggleButton.MouseButton1Click:Connect(function()
-	panel.Visible = not panel.Visible
+	PanelCoordinator.toggle("upgrades")
 end)
 
 local upgrades = {}

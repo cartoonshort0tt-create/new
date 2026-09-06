@@ -112,6 +112,38 @@ behavior, real rotation, a genuinely unpublished place):
   chassis — an extra 90-degree rotation moved that axis onto Y instead.
   Removed the rotation.
 
+## Fixed after the showroom rework's first playtest
+
+Three more real bugs, found immediately after the showroom rework above went
+into Studio:
+
+- **Track corners were sealed shut, trapping the car.** The wall-building
+  code built each of the 4 road segments' flanking walls independently,
+  each sized to that segment's *full* length — including the zone where it
+  overlaps the next segment at a corner. Both segments meeting at a corner
+  then extended walls into that same corner square from different
+  directions, boxing it in instead of leaving a driveable turn. Fixed by
+  replacing per-segment walls with `TrackBuilder`'s `addWallRectangle`: two
+  independent, concentric rectangular perimeters (an outer ring and an
+  inner ring) built the same corner-overlap way the road itself is, which
+  leaves the same open corridor all the way around, corners included.
+  Locked in with new geometry tests in `tests/test_track_builder.lua` that
+  check every wall sits on exactly one of the two rings, with a length that
+  matches that ring.
+- **"RETURN TO SHOWROOM" didn't work if you'd gotten out of the car.** The
+  handler moved the *car* with `PivotTo` but never re-seated the *player*,
+  so someone who'd exited to walk around (as in the reported bug) stayed on
+  foot in the showroom. The same gap existed on the outbound teleport pads.
+  Fixed with a shared `seatPlayerInCar` helper called after every teleport,
+  covered by `tests/test_game_return_to_showroom.lua`.
+- **UI panels didn't close and could stack on screen.** Garage/Upgrades/
+  Crates each toggled their own panel's `Visible` independently, so opening
+  one never closed another, and there was no way to back out of one once
+  open. Fixed with a shared `PanelCoordinator` module
+  (`src/ReplicatedStorage/Modules/PanelCoordinator.lua`): each panel
+  registers itself and toggles through it, so opening one always closes the
+  others, and each panel also got an explicit CLOSE button.
+
 ## Project layout
 
 This is a [Rojo](https://rojo.space) project, so the game lives as plain Lua
@@ -132,6 +164,10 @@ src/
       PlayerProfile.lua      -- DataStore-backed profile (currencies, cars, garage slots, upgrades, pity)
       UpgradeCatalog.lua     -- 5-branch upgrade cost curve + stat bonus
       CrateService.lua       -- crate odds, pity, tier -> car pool
+  ReplicatedStorage/
+    Modules/
+      PanelCoordinator.lua   -- shared "only one UI panel open at a time"
+                                 coordinator used by Garage/Upgrades/Crates
   StarterPlayer/
     StarterPlayerScripts/
       LapHud.client.lua      -- Cash/Crystals/lap HUD
