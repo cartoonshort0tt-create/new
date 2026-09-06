@@ -385,9 +385,20 @@ local function newDataStore()
 	}
 end
 
+-- Test-only: lets a test reproduce the exact real-Roblox failure mode of
+-- an unpublished place (GetDataStore throws synchronously) without
+-- needing an actual unpublished place.
+local simulateUnpublishedPlace = false
+function M.simulateUnpublishedPlace(enabled)
+	simulateUnpublishedPlace = enabled
+end
+
 local dataStores = {}
 local DataStoreService = {
 	GetDataStore = function(_, name)
+		if simulateUnpublishedPlace then
+			error("You must publish this place to the web to access DataStore.", 0)
+		end
 		if not dataStores[name] then
 			dataStores[name] = newDataStore()
 		end
@@ -536,6 +547,7 @@ sharedEnv = {
 	type = type,
 	select = select,
 	print = print,
+	warn = print, -- real Roblox warn() logs in orange; a plain print is fine for tests
 	setmetatable = setmetatable,
 	getmetatable = getmetatable,
 	rawget = rawget,

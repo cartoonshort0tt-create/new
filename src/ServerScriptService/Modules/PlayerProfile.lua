@@ -6,15 +6,44 @@
 -- data on save. Fine for a single-server prototype; revisit before this
 -- ever runs on more than one server at a time.
 --
--- DataStore calls will fail silently (falling back to a fresh default
+-- DataStore reads/writes will fail (falling back to a fresh default
 -- profile) in Studio unless "Enable Studio Access to API Services" is on
--- under Game Settings > Security.
+-- under Game Settings > Security. GetDataStore itself can also throw --
+-- e.g. "You must publish this place to the web to access DataStore" for a
+-- place that's never been published -- which would otherwise crash this
+-- whole module (and everything that requires it) before a single player
+-- ever joins. Guarded below with an in-memory fallback so the rest of the
+-- game still works that session; Cash/Crystals just won't persist.
 
 local DataStoreService = game:GetService("DataStoreService")
 
 local CarCatalog = require(script.Parent.CarCatalog)
 
-local profileStore = DataStoreService:GetDataStore("Brikyard_PlayerProfiles_v1")
+local profileStore
+do
+	local ok, storeOrError = pcall(function()
+		return DataStoreService:GetDataStore("Brikyard_PlayerProfiles_v1")
+	end)
+	if ok then
+		profileStore = storeOrError
+	else
+		warn(
+			"Brikyard: DataStore unavailable ("
+				.. tostring(storeOrError)
+				.. ") -- Cash/Crystals will not persist this session. "
+				.. "Publish this place to Roblox and enable Studio API access to fix."
+		)
+		local memory = {}
+		profileStore = {
+			GetAsync = function(_, key)
+				return memory[key]
+			end,
+			SetAsync = function(_, key, value)
+				memory[key] = value
+			end,
+		}
+	end
+end
 
 local UPGRADE_BRANCHES = { "Engine", "Tires", "Nitro", "Handling", "Chassis" }
 
