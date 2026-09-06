@@ -1,9 +1,10 @@
 # Brikyard
 
-A brick-built car collection and racing game for Roblox. Six racers a server,
-six personal garages, three shared competitive tracks, and a rarity ladder
-from a free starter hatchback up to a handful of Limited cars almost nobody
-will ever own.
+A brick-built car collection and racing game for Roblox. Everyone spawns in
+a shared showroom (garage/shop/upgrades/crates), drives through a teleport
+pad onto one of three walled competitive tracks either solo or in a matched
+multiplayer heat, and works up a rarity ladder from a free starter hatchback
+to a handful of Limited cars almost nobody will ever own.
 
 Full concept blueprint (rarity system, economy, matchmaking, monetization,
 growth features) lives outside this repo as a design document; ask the
@@ -16,11 +17,11 @@ server-authoritative lap timing.
 
 **Phase 1 (vertical slice):**
 
-- Cash economy: 25 Cash/practice lap, 55-70 Cash/competitive lap (varies by
-  track), awarded and tracked server-side only, persisted to DataStore
+- Cash economy: 55-70 Cash per freeform (solo) lap depending on track,
+  awarded and tracked server-side only, persisted to DataStore
   (`PlayerProfile.lua`)
-- Six personal garage plots — each player gets their own copy of the loop
-  track, positioned far enough apart to never overlap, assigned on join
+- A shared showroom/lobby everyone spawns into, with a teleport pad to each
+  competitive track (see "The showroom rework" below)
 - Three purchasable Common-tier cars plus a shop UI (`ShopUI.client.lua`),
   gated by a Garage Slot cap (starts at 4, buyable up to 30, Cash-only for
   now — see Known simplifications)
@@ -52,6 +53,65 @@ leaderboards, the Race Ticket/energy system, and any actual Robux purchase
 flow (Crystal packs, gamepasses) — those need MarketplaceService products
 configured in the Creator Dashboard, which this repo can't do on its own.
 
+## The showroom rework (post-first-playtest)
+
+The first real Studio playtest surfaced three real bugs (see "Fixed after
+the first Studio playtest" below) and one piece of direct feedback: the
+original design — six always-visible personal practice plots lined up next
+to three competitive tracks, all in one open field — looked and felt rough.
+Reworked into:
+
+- **A single shared showroom/lobby** (`TrackBuilder.buildShowroom`) with a
+  neutral `SpawnLocation` everyone spawns at. The Garage/Upgrades/Crates
+  panels are just always-on-screen UI, so they already worked from anywhere
+  — the showroom mainly needed to exist as a place to stand and a way to
+  reach a track.
+- **Three physical teleport pads** in the showroom, one per track, each
+  labeled and colored to match that track's theme — drive onto one to
+  travel there (server-validated, not a client-side jump). Getting back is
+  a **"RETURN TO SHOWROOM" UI button** instead of a pad: every point on a
+  walled loop is on the main driving line, so a physical return pad risked
+  yanking a racer back to the showroom mid-lap if they clipped it during a
+  real race.
+- **Barrier walls on both edges of every straight**, so a car physically
+  can't drive off a track anymore — it wasn't walled at all before.
+- **Bigger tracks** — every competitive track's footprint grew (e.g. Speed
+  Oval's half-length went from 70 to 130 studs) — and **per-track color
+  theming** (road/wall/centerline colors distinct per archetype) plus a
+  painted centerline, instead of one flat grey rectangle for all three.
+- The personal-plot system (`assignPlot`/`releasePlot`/6 practice tracks) is
+  gone entirely. "Solo racing" is now just freeform (non-matched) driving on
+  any of the 3 real tracks, which already paid a lower rate than a matched
+  race — the low-reward/high-reward split the redesign asked for was already
+  there, it just needed a real place to happen.
+
+Track shape is still a placeholder rectangle, not the blueprint's real
+curved layouts — that's still a genuine art task, not something proportions
+and color alone fix. See "Known simplifications" below.
+
+## Fixed after the first Studio playtest
+
+None of these were caught by the Lua test suite — each is exactly the kind
+of thing `tests/README.md` warns it can't check (real Roblox runtime
+behavior, real rotation, a genuinely unpublished place):
+
+- **A player's Character can already exist when `PlayerAdded` runs**
+  (common in Studio's solo Play mode), so `CharacterAdded:Connect` never
+  fired and no car ever spawned. Fixed by also spawning directly when
+  `player.Character` is already set.
+- **`DataStoreService:GetDataStore()` throws for an unpublished place**
+  ("You must publish this place to the web to access DataStore"), which
+  crashed `PlayerProfile.lua` at module-load time, which crashed
+  `GameInit.server.lua`'s `require` of it before a single RemoteEvent got
+  created — the entire game looked like a stock baseplate. Fixed with a
+  pcall and an in-memory fallback so the rest of the game still works that
+  session; Cash/Crystals just won't persist.
+- **Wheels rendered flat, lying on their side like a coin.** A Cylinder's
+  round faces sit perpendicular to its local X-axis by default, which was
+  already the correct orientation for a wheel offset sideways from the
+  chassis — an extra 90-degree rotation moved that axis onto Y instead.
+  Removed the rotation.
+
 ## Project layout
 
 This is a [Rojo](https://rojo.space) project, so the game lives as plain Lua
@@ -61,12 +121,13 @@ files in git and syncs into Roblox Studio rather than as a binary `.rbxl`.
 default.project.json
 src/
   ServerScriptService/
-    GameInit.server.lua      -- track/plot build, car spawning, lap logic,
-                                 shop, garage slots, upgrades, crates,
-                                 matchmaking, drive loop
+    GameInit.server.lua      -- showroom/track build, teleport pads, car
+                                 spawning, lap logic, shop, garage slots,
+                                 upgrades, crates, matchmaking, drive loop
     Modules/
       CarBuilder.lua         -- builds a car Model from brick parts
-      TrackBuilder.lua       -- builds a loop track + checkpoints (size configurable)
+      TrackBuilder.lua       -- builds a walled, themed loop track +
+                                 checkpoints, and the showroom/lobby
       CarCatalog.lua         -- purchasable + crate-exclusive car definitions
       PlayerProfile.lua      -- DataStore-backed profile (currencies, cars, garage slots, upgrades, pity)
       UpgradeCatalog.lua     -- 5-branch upgrade cost curve + stat bonus
@@ -77,7 +138,8 @@ src/
       ShopUI.client.lua      -- car shop + garage slot panel
       UpgradeUI.client.lua   -- upgrade tree panel
       CrateUI.client.lua     -- Blueprint Crate panel (odds + pity)
-      QueueUI.client.lua     -- per-track race queue + results panel
+      QueueUI.client.lua     -- per-track race queue, results, and the
+                                 "return to showroom" button
 tests/
   (see tests/README.md)      -- a Lua-level simulation of the server logic,
                                  since there's no Studio available here to
@@ -125,10 +187,11 @@ when it's time to revisit them:
   instead is a same-server queue + race-session system, one queue per
   track, that proves the mechanic (heat forms, placement payout, DNF
   handling) without that infrastructure.
-- **Track archetypes differ in footprint and economy, not terrain.** Speed
-  Oval/Technical Circuit/Stunt Yard are currently three differently-sized
-  placeholder loops with different rewards — no real chicanes, jumps, or
-  drift ribbons yet. That's real level art, deferred until it exists.
+- **Track archetypes differ in size, color theme, and economy, not real
+  terrain.** Speed Oval/Technical Circuit/Stunt Yard are three differently
+  sized, differently colored, walled rectangular loops with different
+  rewards — no real chicanes, jumps, or drift ribbons yet. That's real
+  level art, deferred until it exists.
 - **No real currency purchases.** Crystals only trickle in from competitive
   laps right now (1/lap). Robux-priced Crystal packs, gamepasses, and the
   Garage Slot cap's "instant Robux unlock" all need MarketplaceService
@@ -157,16 +220,20 @@ when it's time to revisit them:
 This was written without a running Studio session to test against, so a few
 things are flagged for a first-pass check once it's actually synced in:
 
-- Steering direction (`GameInit.server.lua`, the `turnRate` sign) may come
-  out reversed — flip the sign if so.
+- Steering direction (`GameInit.server.lua`, the `turnRate` sign) still
+  hasn't been confirmed either way — flip the sign if it comes out reversed.
 - `MAX_FORWARD_SPEED` / `MAX_REVERSE_SPEED` / `MAX_TURN_RATE`, all Cash/
   Crystal reward amounts, garage slot costs, and the crate/race economy
   numbers are starting guesses, not tuned values.
 - No wrong-way detection — driving a checkpoint gap backwards isn't
   penalized yet.
-- The six UI panels (Garage/Upgrades/Crates/Queue/HUD, plus the per-track
-  queue buttons) are laid out with hardcoded screen positions and haven't
-  been checked for overlap on smaller viewports.
+- The showroom's 3 outbound pads and the wall placement on every track were
+  computed, not visually checked — a pad could in principle sit too close
+  to a wall or to the `SpawnLocation`. Worth a look once this is actually
+  in Studio.
+- The UI panels (Garage/Upgrades/Crates/Queue-and-Return/HUD) are laid out
+  with hardcoded screen positions and haven't been checked for overlap on
+  smaller viewports.
 - DataStore reads/writes will silently no-op to a fresh default profile in
   Studio unless *Enable Studio Access to API Services* is turned on under
   Game Settings → Security.

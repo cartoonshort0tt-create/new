@@ -48,6 +48,7 @@ function M.boot()
 		"GetCrateInfo",
 		"QueueForRace",
 		"PurchaseGarageSlot",
+		"ReturnToShowroom",
 	}
 	for _, name in ipairs(remoteNames) do
 		remotes[name] = mock.ReplicatedStorage:FindFirstChild(name)

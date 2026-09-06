@@ -1,21 +1,22 @@
 -- Brikyard server bootstrap.
 --
--- Builds six personal practice plots plus the three shared competitive
--- tracks (Speed Oval, Technical Circuit, Stunt Yard), spawns each
--- player's active car at their assigned plot, validates lap
--- completion per-track server-side (checkpoints must be hit in order),
--- awards Cash, and handles car shop purchases/selection. Everything lives
--- in this one Script because plot assignment, car spawning, and the shop
--- all need to share the same in-memory player state -- splitting them into
--- separate Script instances would mean threading that state through a
--- ModuleScript for no real benefit at this size.
+-- Builds a shared showroom/lobby (where every player spawns, and where the
+-- always-on-screen Garage/Upgrades/Crates panels do their thing) plus the
+-- three walled, themed competitive tracks (Speed Oval, Technical Circuit,
+-- Stunt Yard), off in their own area of the workspace. Players drive from
+-- the showroom onto a track via a physical teleport pad, and back via a
+-- UI button. Spawns each player's active car, validates lap completion
+-- per-track server-side (checkpoints must be hit in order, walls keep the
+-- car from just driving off), awards Cash, and handles car shop purchases/
+-- selection. Everything lives in this one Script because car spawning,
+-- teleporting, and the shop all need to share the same in-memory player
+-- state -- splitting them into separate Script instances would mean
+-- threading that state through a ModuleScript for no real benefit at this
+-- size.
 --
 -- Known limitations, expected to be checked once this is first tested in
 -- Studio rather than guessed here: steering direction and the speed/turn
--- constants may need a sign flip or retune. No wrong-way detection. If
--- more than 6 players join one server, players beyond the 6th share plot 1
--- instead of the server rejecting them (Studio's Max Players setting is
--- expected to be set to 6 in practice).
+-- constants may need a sign flip or retune. No wrong-way detection.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -31,49 +32,66 @@ local CrateService = require(script.Parent.Modules.CrateService)
 local MAX_FORWARD_SPEED = 90 -- studs/sec, before a car's SpeedMultiplier
 local MAX_REVERSE_SPEED = 30 -- studs/sec, before a car's SpeedMultiplier
 local MAX_TURN_RATE = 3 -- radians/sec at full speed, before TurnMultiplier
-local PRACTICE_CASH_PER_LAP = 25
 local COMPETITIVE_CRYSTALS_PER_LAP = 1 -- placeholder trickle; real Crystal packs need Dashboard-configured dev products
 local GARAGE_SLOT_CAP = 30
 local GARAGE_SLOT_START = 4 -- matches PlayerProfile's default GarageSlots
 local GARAGE_SLOT_BASE_COST = 200 -- Cash; Robux instant-unlock needs a Dashboard-configured gamepass, not done here
+local TELEPORT_COOLDOWN_SECONDS = 3 -- prevents an outbound pad re-triggering every frame while the car sits on it
 
--- The three track archetypes from the blueprint. Terrain differentiation
--- (real chicanes, jumps) is deferred until there's actual level art --
--- these are placeholder loops that currently differ only in footprint,
--- freeform Cash rate, and the race payout multiplier, same as the single
--- placeholder loop this replaced.
+local SHOWROOM_CENTER = Vector3.new(0, 0, 0)
+local SHOWROOM_SIZE = 220
+
+-- The three track archetypes from the blueprint, off in their own area
+-- away from the showroom. Bigger than the original prototype loop, walled
+-- on both edges so a car can't drive off, and color-themed per archetype.
+-- Terrain differentiation (real chicanes, jumps) is still a later art
+-- pass -- these are bigger, walled, themed placeholder loops, not the
+-- blueprint's real curved layouts yet.
 local COMPETITIVE_TRACK_DEFS = {
 	{
 		id = "speed_oval",
 		displayName = "SpeedOval",
 		center = Vector3.new(3000, 0, 0),
-		halfSpanX = 40,
-		halfLengthZ = 70,
+		halfSpanX = 70,
+		halfLengthZ = 130,
 		cashPerLap = 60,
 		raceMultiplier = 4.5,
+		theme = {
+			roadColor = Color3.fromRGB(58, 60, 68),
+			wallColor = Color3.fromRGB(40, 120, 220),
+			lineColor = Color3.fromRGB(255, 255, 255),
+		},
 	},
 	{
 		id = "technical_circuit",
 		displayName = "TechnicalCircuit",
-		center = Vector3.new(3400, 0, 0),
-		halfSpanX = 30,
-		halfLengthZ = 40,
+		center = Vector3.new(3600, 0, 0),
+		halfSpanX = 55,
+		halfLengthZ = 75,
 		cashPerLap = 55,
 		raceMultiplier = 4.0,
+		theme = {
+			roadColor = Color3.fromRGB(80, 68, 64),
+			wallColor = Color3.fromRGB(205, 45, 45),
+			lineColor = Color3.fromRGB(255, 255, 255),
+		},
 	},
 	{
 		id = "stunt_yard",
 		displayName = "StuntYard",
-		center = Vector3.new(3800, 0, 0),
-		halfSpanX = 35,
-		halfLengthZ = 50,
+		center = Vector3.new(4200, 0, 0),
+		halfSpanX = 60,
+		halfLengthZ = 95,
 		cashPerLap = 70,
 		raceMultiplier = 6.0,
+		theme = {
+			roadColor = Color3.fromRGB(150, 110, 60),
+			wallColor = Color3.fromRGB(230, 140, 30),
+			lineColor = Color3.fromRGB(45, 40, 35),
+		},
 	},
 }
 local AUTOSAVE_INTERVAL_SECONDS = 300
-local MAX_PLOTS = 6
-local PLOT_SPACING = 300 -- studs between plot centers, wide enough to clear each loop's footprint
 
 -- ===== Remotes =====
 
@@ -117,11 +135,14 @@ local purchaseGarageSlotEvent = Instance.new("RemoteEvent")
 purchaseGarageSlotEvent.Name = "PurchaseGarageSlot"
 purchaseGarageSlotEvent.Parent = ReplicatedStorage
 
--- ===== Track building =====
+local returnToShowroomEvent = Instance.new("RemoteEvent")
+returnToShowroomEvent.Name = "ReturnToShowroom"
+returnToShowroomEvent.Parent = ReplicatedStorage
+
+-- ===== Track & showroom building =====
 -- tracks[trackId] = { cashPerLap, checkpointCount, isCompetitive, raceMultiplier }
 -- (isCompetitive/raceMultiplier are only set for the three competitive tracks, below)
 local tracks = {}
-local plotSpawns = {} -- plotIndex -> spawnCFrame
 
 local function registerTrack(trackId, checkpoints, cashPerLap)
 	for _, checkpoint in ipairs(checkpoints) do
@@ -134,9 +155,46 @@ end
 local allCheckpoints = {}
 local competitiveSpawns = {} -- trackId -> spawnCFrame
 local competitiveTrackIds = {} -- trackId -> true, for quick membership checks
+-- Outbound teleport pads (built here, wired up to findDriver further down
+-- once it exists): { part, trackId }
+local outboundPads = {}
 
-for _, def in ipairs(COMPETITIVE_TRACK_DEFS) do
-	local model, checkpoints, spawnCFrame = TrackBuilder.buildLoop(def.center, def.halfSpanX, def.halfLengthZ)
+local showroomModel, showroomSpawnCFrame = TrackBuilder.buildShowroom(SHOWROOM_CENTER, SHOWROOM_SIZE)
+showroomModel.Parent = workspace
+
+local function addOutboundPad(offset, color, labelText, destinationTrackId)
+	local pad = Instance.new("Part")
+	pad.Name = "TeleportPad"
+	pad.Anchored = true
+	pad.CanCollide = true
+	pad.Size = Vector3.new(10, 1, 10)
+	pad.CFrame = CFrame.new(SHOWROOM_CENTER + offset)
+	pad.Color = color
+	pad.Material = Enum.Material.Neon
+	pad.Parent = showroomModel
+	pad:SetAttribute("TeleportTo", destinationTrackId)
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Size = UDim2.new(0, 160, 0, 40)
+	billboard.StudsOffset = Vector3.new(0, 4, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = pad
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundColor3 = Color3.fromRGB(10, 10, 20)
+	label.BackgroundTransparency = 0.25
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.Font = Enum.Font.SourceSansBold
+	label.TextSize = 18
+	label.Text = labelText
+	label.Parent = billboard
+
+	table.insert(outboundPads, { part = pad, trackId = destinationTrackId })
+end
+
+for i, def in ipairs(COMPETITIVE_TRACK_DEFS) do
+	local model, checkpoints, spawnCFrame = TrackBuilder.buildLoop(def.center, def.halfSpanX, def.halfLengthZ, def.theme)
 	model.Name = def.displayName
 	model.Parent = workspace
 
@@ -150,52 +208,17 @@ for _, def in ipairs(COMPETITIVE_TRACK_DEFS) do
 	for _, cp in ipairs(checkpoints) do
 		table.insert(allCheckpoints, cp)
 	end
-end
 
-for i = 1, MAX_PLOTS do
-	local center = Vector3.new((i - 1) * PLOT_SPACING, 0, 0)
-	local plotModel, plotCheckpoints, spawnCFrame = TrackBuilder.buildLoop(center)
-	plotModel.Name = "Plot" .. i .. "Practice"
-	plotModel.Parent = workspace
-	local trackId = "practice_" .. i
-	registerTrack(trackId, plotCheckpoints, PRACTICE_CASH_PER_LAP)
-	plotSpawns[i] = spawnCFrame
-	for _, cp in ipairs(plotCheckpoints) do
-		table.insert(allCheckpoints, cp)
-	end
-end
-
--- ===== Plot assignment =====
-
-local freePlotSlots = {}
-for i = 1, MAX_PLOTS do
-	freePlotSlots[i] = true
-end
-local plotAssignment = {} -- Player -> plot index
-
-local function assignPlot(player)
-	for i = 1, MAX_PLOTS do
-		if freePlotSlots[i] then
-			freePlotSlots[i] = nil
-			plotAssignment[player] = i
-			return i
-		end
-	end
-	return 1 -- fallback if the server somehow holds more than 6 players
-end
-
-local function releasePlot(player)
-	local index = plotAssignment[player]
-	if index then
-		freePlotSlots[index] = true
-		plotAssignment[player] = nil
-	end
+	-- Pads fan out from the showroom center, each labeled with the track
+	-- they lead to and colored to match that track's wall theme.
+	addOutboundPad(Vector3.new(40, 1, (i - 2) * 24), def.theme.wallColor, def.displayName, def.id)
 end
 
 -- ===== Player + car lifecycle =====
 
--- player -> { car, plotIndex, trackProgress = { [trackId] = { nextCheckpoint, lapStartTime, lapsCompleted, bestLap } } }
+-- player -> { car, lastTrackId, trackProgress = { [trackId] = { nextCheckpoint, lapStartTime, lapsCompleted, bestLap } } }
 local playerData = {}
+local teleportCooldownUntil = {} -- Player -> os.clock() timestamp, debounces the outbound pads
 
 -- Applies catalog base stats * upgrade-tree bonus to a player's current car.
 -- Called on spawn and again immediately after any upgrade purchase so the
@@ -229,7 +252,7 @@ local function spawnCarForPlayer(player)
 
 	local car = CarBuilder.new(player.Name .. "_Car", catalogEntry)
 	car.Parent = workspace
-	car:PivotTo(plotSpawns[data.plotIndex] or plotSpawns[1])
+	car:PivotTo(showroomSpawnCFrame)
 	data.car = car
 	applyEffectiveStats(player)
 
@@ -243,8 +266,7 @@ end
 
 Players.PlayerAdded:Connect(function(player)
 	PlayerProfile.load(player)
-	local plotIndex = assignPlot(player)
-	playerData[player] = { car = nil, plotIndex = plotIndex, trackProgress = {} }
+	playerData[player] = { car = nil, lastTrackId = nil, trackProgress = {} }
 
 	player.CharacterAdded:Connect(function()
 		task.wait(1) -- let the character finish loading before seating it
@@ -267,7 +289,7 @@ Players.PlayerRemoving:Connect(function(player)
 		data.car:Destroy()
 	end
 	playerData[player] = nil
-	releasePlot(player)
+	teleportCooldownUntil[player] = nil
 	PlayerProfile.release(player)
 end)
 
@@ -390,6 +412,7 @@ local function startRace(trackId, racers)
 				lapsCompleted = previous and previous.lapsCompleted or 0,
 				bestLap = previous and previous.bestLap or nil,
 			}
+			data.lastTrackId = trackId
 
 			if data.car and data.car.PrimaryPart then
 				local lateralOffset = (i - (#racers + 1) / 2) * 6
@@ -507,6 +530,7 @@ local function handleCheckpointTouched(checkpoint, hit)
 		progress = { nextCheckpoint = 1, lapStartTime = os.clock(), lapsCompleted = 0, bestLap = nil }
 		data.trackProgress[trackId] = progress
 	end
+	data.lastTrackId = trackId
 
 	if orderValue.Value ~= progress.nextCheckpoint then
 		return -- wrong checkpoint, or already passed -- ignore, no penalty in this phase
@@ -575,6 +599,62 @@ for _, checkpoint in ipairs(allCheckpoints) do
 	end)
 end
 
+-- ===== Showroom <-> track travel =====
+-- Outbound (showroom -> track) is a physical pad, since "drive onto the
+-- pad to enter the track" reads naturally. Return (track -> showroom) is a
+-- UI button instead of a pad: every point on a walled loop is on the main
+-- driving line, so a physical return pad would risk yanking a racer back
+-- to the showroom mid-lap if they clipped it during a real race.
+
+local function handlePadTouched(destinationTrackId, hit)
+	local carModel = hit:FindFirstAncestorOfClass("Model")
+	if not carModel then
+		return
+	end
+
+	local player, data = findDriver(carModel)
+	if not player then
+		return
+	end
+
+	local now = os.clock()
+	if (teleportCooldownUntil[player] or 0) > now then
+		return
+	end
+	teleportCooldownUntil[player] = now + TELEPORT_COOLDOWN_SECONDS
+
+	if data.car and data.car.PrimaryPart then
+		data.car:PivotTo(competitiveSpawns[destinationTrackId])
+		data.car.PrimaryPart.AssemblyLinearVelocity = Vector3.new()
+		data.car.PrimaryPart.AssemblyAngularVelocity = Vector3.new()
+	end
+
+	local previous = data.trackProgress[destinationTrackId]
+	data.trackProgress[destinationTrackId] = {
+		nextCheckpoint = 1,
+		lapStartTime = os.clock(),
+		lapsCompleted = previous and previous.lapsCompleted or 0,
+		bestLap = previous and previous.bestLap or nil,
+	}
+	data.lastTrackId = destinationTrackId
+end
+
+for _, pad in ipairs(outboundPads) do
+	pad.part.Touched:Connect(function(hit)
+		handlePadTouched(pad.trackId, hit)
+	end)
+end
+
+returnToShowroomEvent.OnServerEvent:Connect(function(player)
+	local data = playerData[player]
+	if not data or not data.car or not data.car.PrimaryPart then
+		return
+	end
+	data.car:PivotTo(showroomSpawnCFrame)
+	data.car.PrimaryPart.AssemblyLinearVelocity = Vector3.new()
+	data.car.PrimaryPart.AssemblyAngularVelocity = Vector3.new()
+end)
+
 -- ===== Shop =====
 
 local function countOwnedCars(profile)
@@ -606,7 +686,7 @@ end
 getInitialStateFunction.OnServerInvoke = function(player)
 	local profile = PlayerProfile.get(player)
 	local data = playerData[player]
-	local progress = data and data.trackProgress["practice_" .. tostring(data.plotIndex or 1)]
+	local progress = data and data.lastTrackId and data.trackProgress[data.lastTrackId]
 	return {
 		cash = profile and profile.Cash or 0,
 		crystals = profile and profile.Crystals or 0,

@@ -66,9 +66,50 @@ end
 T.assertTrue(smallRightCheckpoint.CFrame.X < defaultRightCheckpoint.CFrame.X, "smaller halfSpanX pulls checkpoint 2 inward")
 
 -- Two loops built at different centers must not collide -- this is the
--- same spacing assumption GameInit relies on for 6 plots + 3 competitive
--- tracks sharing one workspace.
+-- same spacing assumption GameInit relies on for the 3 competitive tracks
+-- sharing one workspace.
 local farModel, farCheckpoints, farSpawn = TrackBuilder.buildLoop(mock.Vector3.new(3000, 0, 0))
 T.assertTrue(farSpawn.X > 2900, "a track built far from the origin is actually built there, not at (0,0,0)")
+
+-- Barrier walls: exactly 8 (2 per straight segment), all solid, so a car
+-- can't drive off the track -- the whole point of adding them.
+local wallCount = 0
+for _, child in ipairs(model:GetChildren()) do
+	if child.Name == "Wall" then
+		wallCount = wallCount + 1
+		T.assertEqual(child.CanCollide, true, "wall is solid")
+		T.assertEqual(child.Anchored, true, "wall is anchored")
+	end
+end
+T.assertEqual(wallCount, 8, "8 walls (2 flanking each of the 4 road segments)")
+
+-- Custom theme colors actually get applied, not silently ignored.
+local themedModel = TrackBuilder.buildLoop(mock.Vector3.new(500, 0, 0), nil, nil, {
+	roadColor = mock.Color3.fromRGB(1, 2, 3),
+	wallColor = mock.Color3.fromRGB(4, 5, 6),
+	lineColor = mock.Color3.fromRGB(7, 8, 9),
+})
+for _, child in ipairs(themedModel:GetChildren()) do
+	if child.Name == "RoadSegment" then
+		T.assertEqual(child.Color.R, 1 / 255, "custom roadColor is applied")
+	elseif child.Name == "Wall" then
+		T.assertEqual(child.Color.R, 4 / 255, "custom wallColor is applied")
+	elseif child.Name == "Centerline" then
+		T.assertEqual(child.Color.R, 7 / 255, "custom lineColor is applied")
+	end
+end
+
+-- Showroom: a floor plus a neutral SpawnLocation (so it spawns players
+-- regardless of any leftover Teams setup in the place), and a car spawn
+-- point distinct from the humanoid spawn so a car doesn't overlap it.
+local showroomModel, carSpawnCFrame = TrackBuilder.buildShowroom(mock.Vector3.new(0, 0, 0))
+T.assertEqual(showroomModel.ClassName, "Model", "buildShowroom returns a Model")
+local spawnLocation = showroomModel:FindFirstChild("ShowroomSpawn")
+T.assertTrue(spawnLocation ~= nil, "showroom has a SpawnLocation")
+if spawnLocation then
+	T.assertEqual(spawnLocation.ClassName, "SpawnLocation", "ShowroomSpawn is actually a SpawnLocation")
+	T.assertEqual(spawnLocation.Neutral, true, "showroom spawn is neutral (not team-restricted)")
+end
+T.assertTrue(carSpawnCFrame ~= nil, "buildShowroom returns a car spawn CFrame")
 
 T.report()

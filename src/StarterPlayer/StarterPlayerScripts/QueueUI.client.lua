@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local localPlayer = Players.LocalPlayer
 local lapUpdateEvent = ReplicatedStorage:WaitForChild("LapUpdate")
 local queueForRaceEvent = ReplicatedStorage:WaitForChild("QueueForRace")
+local returnToShowroomEvent = ReplicatedStorage:WaitForChild("ReturnToShowroom")
 
 local TRACKS = {
 	{ id = "speed_oval", label = "SPEED OVAL" },
@@ -91,6 +92,20 @@ for _, def in ipairs(TRACKS) do
 
 	buttons[def.id] = button
 end
+
+local returnButton = Instance.new("TextButton")
+returnButton.Name = "ReturnToShowroomButton"
+returnButton.Size = UDim2.new(1, 0, 0, 40)
+returnButton.Font = Enum.Font.SourceSansBold
+returnButton.TextSize = 15
+returnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+returnButton.BackgroundColor3 = Color3.fromRGB(90, 90, 100)
+returnButton.Text = "RETURN TO SHOWROOM"
+returnButton.Parent = panel
+
+returnButton.MouseButton1Click:Connect(function()
+	returnToShowroomEvent:FireServer()
+end)
 
 lapUpdateEvent.OnClientEvent:Connect(function(data)
 	if data.type == "queueJoined" then

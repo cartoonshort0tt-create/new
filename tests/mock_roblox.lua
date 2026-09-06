@@ -183,6 +183,21 @@ function Color3.fromRGB(r, g, b)
 	return { R = r / 255, G = g / 255, B = b / 255 }
 end
 
+-- ===== UDim / UDim2 (GUI sizing -- no arithmetic needed here, just construction) =====
+
+local UDim = {}
+function UDim.new(scale, offset)
+	return { Scale = scale or 0, Offset = offset or 0 }
+end
+
+local UDim2 = {}
+function UDim2.new(xScale, xOffset, yScale, yOffset)
+	return {
+		X = { Scale = xScale or 0, Offset = xOffset or 0 },
+		Y = { Scale = yScale or 0, Offset = yOffset or 0 },
+	}
+end
+
 -- ===== Enum (auto-vivifying: Enum.Anything.Anything just works) =====
 
 local function makeEnumMember(category, name)
@@ -530,6 +545,8 @@ sharedEnv = {
 	Vector3 = Vector3,
 	CFrame = CFrame,
 	Color3 = Color3,
+	UDim = UDim,
+	UDim2 = UDim2,
 	Enum = Enum,
 	task = task,
 	os = mockOs,
