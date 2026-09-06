@@ -71,7 +71,12 @@ function CarBuilder.new(name, catalogEntry)
 		wheelPart.Name = "Wheel" .. i
 		wheelPart.Shape = Enum.PartType.Cylinder
 		wheelPart.Size = Vector3.new(1, 2, 2)
-		wheelPart.CFrame = chassis.CFrame * CFrame.new(offset) * CFrame.Angles(0, 0, math.rad(90))
+		-- No extra rotation: a Cylinder's round faces already sit
+		-- perpendicular to its local X-axis, which is exactly the axis
+		-- these wheels need since they're offset sideways (+/-X) from the
+		-- chassis center. Rotating here (as an earlier version did) moves
+		-- that axis onto Y instead, making the wheel lie flat like a coin.
+		wheelPart.CFrame = chassis.CFrame * CFrame.new(offset)
 		wheelPart.Color = WHEEL_COLOR
 		wheelPart.Material = Enum.Material.SmoothPlastic
 		wheelPart.Parent = model
