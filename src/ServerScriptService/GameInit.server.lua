@@ -250,6 +250,15 @@ Players.PlayerAdded:Connect(function(player)
 		task.wait(1) -- let the character finish loading before seating it
 		spawnCarForPlayer(player)
 	end)
+
+	-- In Studio's solo Play mode (and sometimes live), the character can
+	-- already exist by the time this connection is made, in which case
+	-- CharacterAdded never fires for it -- handle that case directly
+	-- instead of only listening for future spawns.
+	if player.Character then
+		task.wait(1)
+		spawnCarForPlayer(player)
+	end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
