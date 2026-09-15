@@ -1,7 +1,7 @@
 -- Boots the real GameInit.server.lua and drives a simulated 6-player
--- session against it: dock assignment/release, spawning at the right
--- dock, the 7th player getting no dock, and the round timer actually
--- opening/locking/recalling on schedule.
+-- session against it: player-area assignment/release, spawning at the
+-- right house, the 7th player getting no area, and the round timer
+-- actually opening/locking/recalling on schedule.
 
 local mock = require("tests.mock_roblox")
 local harness = require("tests.game_harness")
@@ -10,18 +10,18 @@ T.suite("Game: pond arena smoke test")
 
 local game = harness.boot()
 local PondBuilder = game.PondBuilder
+local CONFIG = PondBuilder.CONFIG
 
 -- ===== Arena exists =====
 
-local pond = mock.workspace:FindFirstChild("Pond")
-local island = mock.workspace:FindFirstChild("FrogIsland")
-local barrier = mock.workspace:FindFirstChild("IslandLockBarrier")
-local docksFolder = mock.workspace:FindFirstChild("Docks")
+local world = mock.workspace:FindFirstChild(CONFIG.WorldFolderName)
+T.assertTrue(world ~= nil, "the world folder exists in workspace")
 
-T.assertTrue(pond ~= nil, "Pond exists in workspace")
-T.assertTrue(island ~= nil, "FrogIsland exists in workspace")
-T.assertTrue(barrier ~= nil, "IslandLockBarrier exists in workspace")
-T.assertTrue(docksFolder ~= nil, "Docks folder exists in workspace")
+local playerAreasFolder = world and world:FindFirstChild("SixPlayerAreas")
+T.assertTrue(playerAreasFolder ~= nil, "SixPlayerAreas folder exists")
+
+local barrier = world and world:FindFirstChild("FrogIsland"):FindFirstChild("IslandLockBarrier")
+T.assertTrue(barrier ~= nil, "IslandLockBarrier exists under the island")
 T.assertTrue(game.remotes.RoundState ~= nil, "RoundState remote was created")
 
 -- The round loop runs synchronously up to its first task.wait when
@@ -29,7 +29,18 @@ T.assertTrue(game.remotes.RoundState ~= nil, "RoundState remote was created")
 -- returns -- not sitting locked and waiting for a first tick.
 T.assertEqual(barrier.CanCollide, false, "island starts unlocked as soon as the game boots")
 
--- ===== 6 players join, get distinct docks on the ring =====
+-- Gather each PlayerArea_N's actual spawn marker CFrame from the built
+-- world, so tests compare against what GameInit really built instead of
+-- re-deriving the geometry formula independently.
+local expectedSpawnByIndex = {}
+for i = 1, CONFIG.HouseCount do
+	local area = playerAreasFolder:FindFirstChild("PlayerArea_" .. i)
+	local marker = area and area:FindFirstChild("PlayerSpawn_" .. i)
+	T.assertTrue(marker ~= nil, "PlayerArea_" .. i .. " has its spawn marker")
+	expectedSpawnByIndex[i] = marker
+end
+
+-- ===== 6 players join, get distinct areas =====
 
 local players = {}
 for i = 1, 6 do
@@ -42,31 +53,46 @@ end
 local seenPositions = {}
 for i, player in ipairs(players) do
 	local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-	local radius = math.sqrt(rootPart.CFrame.X ^ 2 + rootPart.CFrame.Z ^ 2)
-	T.assertNear(radius, PondBuilder.DOCK_RING_RADIUS, 0.5, "player " .. i .. " spawned on the dock ring")
 	local key = string.format("%.1f,%.1f", rootPart.CFrame.X, rootPart.CFrame.Z)
-	T.assertTrue(not seenPositions[key], "player " .. i .. " got a dock nobody else is on")
+	T.assertTrue(not seenPositions[key], "player " .. i .. " got a house nobody else is on")
 	seenPositions[key] = true
+
+	-- Confirm it actually matches SOME area's spawn marker (which one
+	-- depends on assignment order, which this test doesn't need to
+	-- predict -- just that it's a real spawn marker, not left at the
+	-- default origin).
+	local matchedAny = false
+	for _, marker in pairs(expectedSpawnByIndex) do
+		if math.abs(rootPart.CFrame.X - marker.CFrame.X) < 0.01 and math.abs(rootPart.CFrame.Z - marker.CFrame.Z) < 0.01 then
+			matchedAny = true
+		end
+	end
+	T.assertTrue(matchedAny, "player " .. i .. " was moved to one of the 6 real spawn markers")
 end
 
--- ===== A 7th player gets no dock (only 6 exist) =====
+-- ===== A 7th player gets no area (only 6 exist) =====
 
 local seventhPlayer = mock.newPlayer("Player7", 7)
 mock.joinPlayer(seventhPlayer)
 mock.spawnCharacter(seventhPlayer)
 local seventhRoot = seventhPlayer.Character:FindFirstChild("HumanoidRootPart")
-T.assertEqual(seventhRoot.CFrame.X, 0, "the 7th player wasn't moved to a dock (none free)")
-T.assertEqual(seventhRoot.CFrame.Z, 0, "the 7th player wasn't moved to a dock (none free)")
+T.assertEqual(seventhRoot.CFrame.X, 0, "the 7th player wasn't moved to a house (none free)")
+T.assertEqual(seventhRoot.CFrame.Z, 0, "the 7th player wasn't moved to a house (none free)")
 
--- ===== Leaving frees a dock for the next joiner =====
+-- ===== Leaving frees an area for the next joiner =====
 
 mock.leavePlayer(players[1])
 local eighthPlayer = mock.newPlayer("Player8", 8)
 mock.joinPlayer(eighthPlayer)
 mock.spawnCharacter(eighthPlayer)
 local eighthRoot = eighthPlayer.Character:FindFirstChild("HumanoidRootPart")
-local eighthRadius = math.sqrt(eighthRoot.CFrame.X ^ 2 + eighthRoot.CFrame.Z ^ 2)
-T.assertNear(eighthRadius, PondBuilder.DOCK_RING_RADIUS, 0.5, "the freed dock went to the next joiner")
+local eighthMatchedAny = false
+for _, marker in pairs(expectedSpawnByIndex) do
+	if math.abs(eighthRoot.CFrame.X - marker.CFrame.X) < 0.01 and math.abs(eighthRoot.CFrame.Z - marker.CFrame.Z) < 0.01 then
+		eighthMatchedAny = true
+	end
+end
+T.assertTrue(eighthMatchedAny, "the freed area went to the next joiner")
 
 -- ===== Round timer: open -> locked (with recall) -> open =====
 
@@ -81,18 +107,23 @@ if barrier.CanCollide then
 end
 T.assertEqual(barrier.CanCollide, false, "(setup) island normalized to open before the round-timer checks")
 
--- Wander player 2 away from their dock, as if they'd swum out mid-round.
+-- Wander player 2 away from their house, as if they'd swum out mid-round.
 local wanderer = players[2]
 local wandererRoot = wanderer.Character:FindFirstChild("HumanoidRootPart")
 wandererRoot.CFrame = mock.CFrame.new(0, 3, 0)
 
-mock.advancePending() -- resumes past task.wait(ROUND_ACTIVE_SECONDS): locks + recalls
+mock.advancePending() -- resumes past task.wait(ActiveRoundSeconds): locks + recalls
 T.assertEqual(barrier.CanCollide, true, "island locks when the round timer fires")
 
-local wandererRadiusAfterRecall = math.sqrt(wandererRoot.CFrame.X ^ 2 + wandererRoot.CFrame.Z ^ 2)
-T.assertNear(wandererRadiusAfterRecall, PondBuilder.DOCK_RING_RADIUS, 0.5, "a wandering player is recalled to their dock when the round locks")
+local wandererMatchedAny = false
+for _, marker in pairs(expectedSpawnByIndex) do
+	if math.abs(wandererRoot.CFrame.X - marker.CFrame.X) < 0.01 and math.abs(wandererRoot.CFrame.Z - marker.CFrame.Z) < 0.01 then
+		wandererMatchedAny = true
+	end
+end
+T.assertTrue(wandererMatchedAny, "a wandering player is recalled to their house when the round locks")
 
-mock.advancePending() -- resumes past task.wait(ROUND_LOCK_SECONDS): unlocks again
-T.assertEqual(barrier.CanCollide, false, "island unlocks again after the 10-second reset gap")
+mock.advancePending() -- resumes past task.wait(ResetSeconds): unlocks again
+T.assertEqual(barrier.CanCollide, false, "island unlocks again after the reset gap")
 
 T.report()

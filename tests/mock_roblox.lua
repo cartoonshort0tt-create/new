@@ -96,7 +96,15 @@ end
 -- ===== Vector3 =====
 
 local Vector3 = {}
-Vector3.__index = Vector3
+-- A function, not a plain table, so `.Magnitude` can be a computed
+-- read-only property (real Roblox Vector3s have one) instead of a static
+-- field every instance would otherwise need set individually.
+Vector3.__index = function(t, key)
+	if key == "Magnitude" then
+		return math.sqrt(t.X * t.X + t.Y * t.Y + t.Z * t.Z)
+	end
+	return Vector3[key]
+end
 
 function Vector3.new(x, y, z)
 	return setmetatable({ X = x or 0, Y = y or 0, Z = z or 0 }, Vector3)
@@ -153,6 +161,13 @@ function CFrame.new(a, b, c)
 	end
 end
 
+function CFrame.lookAt(position, lookAtTarget)
+	-- Real Roblox's lookAt takes an optional up-vector too; nothing this
+	-- project builds needs it, so this is just CFrame.new's two-argument
+	-- form under a different name.
+	return CFrame.new(position, lookAtTarget)
+end
+
 function CFrame.Angles(_, _, _)
 	-- Rotation isn't modeled -- nothing in this project's tested logic
 	-- reads a part's rotation, only its position and LookVector (set at
@@ -179,6 +194,9 @@ end
 -- ===== Color3 =====
 
 local Color3 = {}
+function Color3.new(r, g, b)
+	return { R = r or 0, G = g or 0, B = b or 0 }
+end
 function Color3.fromRGB(r, g, b)
 	return { R = r / 255, G = g / 255, B = b / 255 }
 end
@@ -196,6 +214,12 @@ function UDim2.new(xScale, xOffset, yScale, yOffset)
 		X = { Scale = xScale or 0, Offset = xOffset or 0 },
 		Y = { Scale = yScale or 0, Offset = yOffset or 0 },
 	}
+end
+function UDim2.fromOffset(x, y)
+	return UDim2.new(0, x, 0, y)
+end
+function UDim2.fromScale(x, y)
+	return UDim2.new(x, 0, y, 0)
 end
 
 -- ===== Enum (auto-vivifying: Enum.Anything.Anything just works) =====
@@ -345,6 +369,12 @@ instanceMeta.__index = function(self, key)
 		return value
 	end
 
+	-- Position is a real Roblox Part property derived from CFrame, not
+	-- something scripts normally set directly -- compute it on read.
+	if key == "Position" and props.CFrame then
+		return props.CFrame.Position
+	end
+
 	return findFirstChild(self, key)
 end
 
@@ -437,12 +467,15 @@ end
 local RunService = M.newInstance("RunService")
 
 local workspaceInstance = M.newInstance("Workspace")
+local lightingInstance = M.newInstance("Lighting")
 
 local services = {
 	Players = Players,
 	RunService = RunService,
 	ReplicatedStorage = M.newInstance("ReplicatedStorage"),
 	DataStoreService = DataStoreService,
+	Workspace = workspaceInstance, -- same instance as the bare `workspace` global, like real Roblox
+	Lighting = lightingInstance,
 }
 
 local game = {
@@ -645,5 +678,6 @@ M.workspace = workspaceInstance
 M.Players = Players
 M.RunService = RunService
 M.ReplicatedStorage = services.ReplicatedStorage
+M.Lighting = lightingInstance
 
 return M
