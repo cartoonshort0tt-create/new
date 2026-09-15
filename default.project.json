@@ -1,9 +1,0 @@
-{
-  "name": "FrogPond",
-  "tree": {
-    "$className": "DataModel",
-    "ServerScriptService": {
-      "$path": "src/ServerScriptService"
-    }
-  }
-}
