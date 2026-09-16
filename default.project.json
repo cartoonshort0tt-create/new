@@ -1,0 +1,20 @@
+{
+  "name": "FrogGame",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "FrogGameEnvironmentV13_CompleteReference": {
+        "$path": "src/ServerScriptService/FrogGameEnvironmentV13_CompleteReference.server.lua"
+      },
+      "FrogGameEnvironmentV14_Fix": {
+        "$path": "src/ServerScriptService/FrogGameEnvironmentV14_Fix.server.lua"
+      },
+      "FrogGameEnvironmentV15_Beautification": {
+        "$path": "src/ServerScriptService/FrogGameEnvironmentV15_Beautification.server.lua"
+      },
+      "FrogGameEnvironmentV17_DecorationExpansion": {
+        "$path": "src/ServerScriptService/FrogGameEnvironmentV17_DecorationExpansion.server.lua"
+      }
+    }
+  }
+}
